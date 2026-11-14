@@ -1,0 +1,50 @@
+name: compilar-dylib
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v4
+
+      - name: Descargar fishhook
+        run: |
+          mkdir -p fishhook
+          for b in main master; do
+            if curl -fsL -o fishhook/fishhook.h "https://raw.githubusercontent.com/facebook/fishhook/$b/fishhook.h"; then
+              curl -fsL -o fishhook/fishhook.c "https://raw.githubusercontent.com/facebook/fishhook/$b/fishhook.c"
+              echo "descargado desde rama $b"
+              break
+            fi
+          done
+          ls -la fishhook
+
+      - name: Compilar dylib
+        run: |
+          xcrun --sdk iphoneos clang \
+            -arch arm64 -arch arm64e \
+            -miphoneos-version-min=14.0 \
+            -dynamiclib -O2 -fobjc-arc \
+            -framework Foundation -framework UIKit -framework Security \
+            -install_name @executable_path/Frameworks/libbypass.dylib \
+            -I fishhook \
+            -o libbypass.dylib \
+            bypass.m fishhook/fishhook.c
+
+      - name: Comprobar resultado
+        run: |
+          file libbypass.dylib
+          otool -D libbypass.dylib
+
+      - name: Publicar dylib
+        uses: actions/upload-artifact@v4
+        with:
+          name: libbypass
+          path: libbypass.dylib
+          if-no-files-found: error
